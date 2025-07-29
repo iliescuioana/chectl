@@ -1,0 +1,62 @@
+name: Generate SBOM
+
+on:
+  push:
+    branches:
+      - sbom-testing # TO DO: Remove 
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version"
+        default: "main"
+        required: true
+
+env:
+  PRODUCT_PATH: "./"
+
+permissions:
+  contents: read
+
+jobs:
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-22.04
+    outputs:
+      project-version: ${{ steps.version.outputs.PROJECT_VERSION }}
+    
+    permissions:
+      packages: read
+
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}"
+          echo "PROJECT_VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Product version: $VERSION"
+
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.version.outputs.PROJECT_VERSION }}
+
+      - name: Print trigger info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Using ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.version }}"
+          echo "Commit SHA: $(git rev-parse HEAD)"
+
+      - name: Install dependencies
+        run: |
+          yarn
+
+      - name: Install cdxgen
+        run: |
+          npm install -g @cyclonedx/cdxgen
+
+      - name: Generate SBOM
+        run: |
+          cdxgen -r -o ${{ env.PRODUCT_PATH }}/bom.json --deep
